@@ -25,15 +25,20 @@ This program is available under Apache License Version 2.0, available at https:/
     setItemForIndex(index, item) {
       const {cache, scaledIndex} = this.getCacheAndIndex(index);
       if (item.siblingCount !== undefined && cache.size !== parseInt(item.siblingCount)) {
-        this.size = parseInt(item.siblingCount);
-        // this.parentCache.updateSize();
+        cache.ownSize = parseInt(item.siblingCount);
+        cache.updateSize();
       }
       cache.map[scaledIndex] = item;
     }
 
-    updateSize(size) {
-      this.size = size;
-      this.parentCache
+    updateSize() {
+      this.size = this.ownSize + Object.keys(this.expandedItems).reduce((prev, curr) => {
+        return prev + this.expandedItems[curr].collapsed ? 0 : this.expandedItems[curr].size;
+      }, 0);
+
+      if (this.parentCache) {
+        this.parentCache.updateSize();
+      }
     }
 
     expandIndex(index) {
@@ -41,11 +46,13 @@ This program is available under Apache License Version 2.0, available at https:/
       cache.expandedItems[scaledIndex] = cache.expandedItems[scaledIndex] || new CacheItem();
       cache.expandedItems[scaledIndex].collapsed = false;
       cache.expandedItems[scaledIndex].parentCache = this;
+      this.updateSize();
     }
 
     collapseIndex(index) {
       const {cache, scaledIndex} = this.getCacheAndIndex(index);
       cache.expandedItems[scaledIndex].collapsed = true;
+      cache.updateSize();
     }
 
     getCacheAndIndex(index) {
@@ -130,6 +137,17 @@ This program is available under Apache License Version 2.0, available at https:/
           }
         },
       };
+    }
+
+    static get observers() {
+      return [
+        '_updateCacheSize(size)'
+      ];
+    }
+
+    _updateCacheSize(size) {
+      this._cache.ownSize = size;
+      this._cache.updateSize();
     }
 
     _loadingChanged(loading) {
@@ -223,6 +241,7 @@ This program is available under Apache License Version 2.0, available at https:/
           items.forEach((item, itemsIndex) => {
             this._cache.setItemForIndex(page * this.pageSize + itemsIndex, item);
           });
+          this._fullSize = this._cache.size;
 
           Array.from(this.$.items.children).forEach(row => {
             const cachedItem = this._cache.getItemForIndex(row.index);
